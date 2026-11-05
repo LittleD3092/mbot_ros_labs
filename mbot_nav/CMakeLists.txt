@@ -55,7 +55,13 @@ add_executable(square_publisher
 )
 ament_target_dependencies(square_publisher rclcpp geometry_msgs mbot_interfaces)
 
-install(TARGETS navigation_node exploration_node controller_node square_publisher
+# cp_1_publisher: Task 1.4 waypoints (9 waypoints)
+add_executable(cp_1_publisher
+  src/cp_1_publisher.cpp
+)
+ament_target_dependencies(cp_1_publisher rclcpp geometry_msgs mbot_interfaces)
+
+install(TARGETS navigation_node exploration_node controller_node square_publisher cp_1_publisher
   RUNTIME DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY launch/ DESTINATION share/${PROJECT_NAME}/launch)

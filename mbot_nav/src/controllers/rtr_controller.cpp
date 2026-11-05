@@ -1,6 +1,7 @@
 #include "controllers/rtr_controller.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <algorithm>  // std::clamp
+#include <cmath>
 
 void RTRController::setPlan(const std::vector<geometry_msgs::msg::Pose2D>& waypoints,
                             double current_x, double current_y)
@@ -28,6 +29,7 @@ void RTRController::setPlan(const std::vector<geometry_msgs::msg::Pose2D>& waypo
         goal_theta_   = goal_queue_.front().theta;
         goal_queue_.erase(goal_queue_.begin());
         goal_received_ = true;
+        resetPID();  //clears integral and derivative (last error) values left over from previous plan
     } else {
         goal_received_ = false;
     }
@@ -46,22 +48,97 @@ geometry_msgs::msg::Twist RTRController::computeVelocityCommands(double x, doubl
 
     if (dist_error > dist_thresh_ && std::fabs(angle_error) > angle_thresh_) {
         // TODO - STATE 1: rotate toward target
-        // There are parameters defined in rtr_controller.hpp
-        // You don't have to use all of them, treat them as hints
-        // hint: lin_error_sum_ relates to p gain
-        //       lin_error_last_ relates to i gain
-        //       for d gain, you need to calculate the derivative. dt_ also defined in the header file
+        // STATE 1: rotate in place toward the waypoint
+        if (previous_state_ != 1) {                 // reset PID on state change
+            ang_error_last_ = angle_error;
+            ang_error_sum_  = 0.0;
+            previous_state_ = 1;
+        }
+        last_lin_cmd_ = 0.0;  
+        ang_error_sum_ = std::clamp(ang_error_sum_ + angle_error * dt_,
+                                    -integral_limit_, integral_limit_);
+        double ang_deriv = wrapToPi(angle_error - ang_error_last_) / dt_;
+        ang_error_last_ = angle_error;
+
+        cmd.angular.z = Kp_ang * angle_error + Ki_ang * ang_error_sum_ + Kd_ang * ang_deriv;
     }
     else if (dist_error > dist_thresh_) {
         // TODO - STATE 2: drive forward with heading correction
+        // STATE 2: drive forward with heading correction
+        if (previous_state_ != 2) {                 // reset PID on state change
+            ang_error_last_ = angle_error;
+            ang_error_sum_  = 0.0;
+            lin_error_last_ = dist_error;
+            lin_error_sum_  = 0.0;
+            previous_state_ = 2;
+        }
+
+        // Linear PID on distance
+        lin_error_sum_ = std::clamp(lin_error_sum_ + dist_error * dt_,
+                                    -integral_limit_, integral_limit_);
+        double lin_deriv = (dist_error - lin_error_last_) / dt_;
+        lin_error_last_ = dist_error;
+
+        double v = Kp_lin * dist_error + Ki_lin * lin_error_sum_ + Kd_lin * lin_deriv;
+        // // Maximum linear speed
+        // double max_linear_speed = 0.2; // slow speed 
+        // double max_linear_speed = 0.8; // high speed
+        // // Reduce speed as the robot approaches the waypoint
+        // double approach_speed = 0.8 * dist_error;
+        
+        cmd.linear.x = std::max(v,0.0);
+        // cmd.linear.x = std::clamp(v,0.0, std::min(max_linear_speed, approach_speed));   
+
+        // Angular PID to hold heading toward the waypoint
+        ang_error_sum_ = std::clamp(ang_error_sum_ + angle_error * dt_,
+                                    -integral_limit_, integral_limit_);
+        double ang_deriv = wrapToPi(angle_error - ang_error_last_) / dt_;
+        ang_error_last_ = angle_error;
+
+        cmd.angular.z = Kp_ang * angle_error + Ki_ang * ang_error_sum_ + Kd_ang * ang_deriv;
     }
     else {
         // TODO - STATE 3: rotate to final orientation
+        // STATE 3: position reached, rotate to the final orientation
+        angle_error = wrapToPi(goal_theta_ - theta);
+        if (previous_state_ != 3) {                 // reset PID on state change
+            ang_error_last_ = angle_error;
+            ang_error_sum_  = 0.0;
+            previous_state_ = 3;
+        }
+        last_lin_cmd_ = 0.0; 
+        
+        if (std::fabs(angle_error) > angle_thresh_) {
+            ang_error_sum_ = std::clamp(ang_error_sum_ + angle_error * dt_,
+                                        -integral_limit_, integral_limit_);
+            double ang_deriv = wrapToPi(angle_error - ang_error_last_) / dt_;
+            ang_error_last_ = angle_error;
+
+            cmd.angular.z = Kp_ang * angle_error + Ki_ang * ang_error_sum_ + Kd_ang * ang_deriv;
+        } else {
+            // Waypoint complete: stop and move on
+            RCLCPP_INFO(rclcpp::get_logger("rtr_controller"), "Waypoint reached: x=%.3f, y=%.3f, theta=%.3f", goal_x_, goal_y_, goal_theta_);
+            cmd.linear.x  = 0.0;
+            cmd.angular.z = 0.0;
+            resetPID();
+            previous_state_ = -1;   // next waypoint starts with a clean reset
+            loadNextGoal();
+            return cmd;
+        }
     }
 
-    // Safety limits
+    // Safety limits (Select slow or high-speed limits)
     cmd.linear.x  = std::clamp(cmd.linear.x,  -0.3, 0.3);
-    cmd.angular.z = std::clamp(cmd.angular.z, -1.0, 1.0);
+    cmd.angular.z = std::clamp(cmd.angular.z, -0.3, 0.3);
+
+    // Slow-speed test: 0.2 m/s and pi/4 rad/s
+    // cmd.linear.x = std::clamp(cmd.linear.x, -0.2, 0.2);
+    // cmd.angular.z = std::clamp(cmd.angular.z, -M_PI/4.0, M_PI/4.0);
+
+    // High-speed test: 0.8 m/s and pi rad/s
+    // cmd.linear.x = std::clamp(cmd.linear.x, -0.8, 0.8);
+    // cmd.angular.z = std::clamp(cmd.angular.z, -M_PI, M_PI);
+
     return cmd;
 }
 
@@ -69,6 +146,8 @@ void RTRController::resetPID()
 {
     lin_error_sum_ = lin_error_last_ = 0.0;
     ang_error_sum_ = ang_error_last_ = 0.0;
+    previous_state_ = -1;
+    last_lin_cmd_ = 0.0;
 }
 
 void RTRController::loadNextGoal()
