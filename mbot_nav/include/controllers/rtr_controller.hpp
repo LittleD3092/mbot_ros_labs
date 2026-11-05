@@ -25,18 +25,21 @@ private:
     bool   goal_received_{false};
     std::vector<geometry_msgs::msg::Pose2D> goal_queue_;
 
-    static constexpr double dist_thresh_     = 0.05;
-    static constexpr double angle_thresh_    = 0.05;
+    static constexpr double dist_thresh_     = 0.03; //original 0.05
+    static constexpr double angle_thresh_    = 0.03; //original 0.05
     static constexpr double dt_              = 0.05;   // 50 ms control period
     static constexpr double integral_limit_  = 1.0;
 
     // PID gains
-    static constexpr double Kp_lin = 1.0, Ki_lin = 0.0, Kd_lin = 0.01;
-    static constexpr double Kp_ang = 1.0, Ki_ang = 0.0, Kd_ang = 0.05;
+    static constexpr double Kp_lin = 0.6, Ki_lin = 0.0, Kd_lin = 0.01;
+    // static constexpr double Kp_ang = 1.0, Ki_ang = 0.0, Kd_ang = 0.05;
+    static constexpr double Kp_ang = 0.8, Ki_ang = 0.0, Kd_ang = 0.05;
 
     // PID state
     double lin_error_sum_{0}, lin_error_last_{0};
     double ang_error_sum_{0}, ang_error_last_{0};
+    int previous_state_{-1};    // param to reset PID when switching between states 1, 2, 3
+    double last_lin_cmd_{0};    // for smoothing linear velocity commands
     
     void resetPID();
     void loadNextGoal();
