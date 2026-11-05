@@ -11,12 +11,18 @@ public:
 
         // Publish once — transient_local QoS delivers the cached message to any late-connecting subscriber
         mbot_interfaces::msg::Pose2DArray goal_array;
-        goal_array.poses = {
-            pose(1.0, 0.0, 0.0),
-            pose(1.0, 1.0, M_PI_2),
-            pose(0.0, 1.0, M_PI),
-            pose(0.0, 0.0, 0.0)
-        };
+        // goal_array.poses = {
+        //     pose(1.0, 0.0, 0.0),
+        //     pose(1.0, 1.0, M_PI_2),
+        //     pose(0.0, 1.0, M_PI),
+        //     pose(0.0, 0.0, 0.0)
+        // };
+        for (int i = 0; i < 1; i++) {
+            goal_array.poses.push_back(pose(1.0, 0.0, 0.0));
+            goal_array.poses.push_back(pose(1.0, 1.0, M_PI_2));
+            goal_array.poses.push_back(pose(0.0, 1.0, M_PI));
+            goal_array.poses.push_back(pose(0.0, 0.0, 0.0));
+        }
         pub_->publish(goal_array);
         RCLCPP_INFO(this->get_logger(), "Published square trajectory with %zu poses.", goal_array.poses.size());
     }
