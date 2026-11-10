@@ -63,13 +63,42 @@ double SensorModel::likelihood(const MovingLaserScan& scan,
         double log_odds = occupancyToLogOdds(getOccupancy(gx, gy, map));
         if (log_odds > 0) { 
             // TODO: The endpoint is a hit, how do we score the ray?
-            // score = ?
-        }
+            // Endpoint is occupied: full score
+            score += log_odds;
+        } else {
         // TODO: if endpoint cell not a hit - check one cell after (along ray)
         // TODO: if cell after not a hit - check one cell before (along ray)
         // Hint if we check before/after cell, we take a fraction
         // you can use ADJACENT_FRACTION in sensor_model.hpp
         // you can also tune RAY_STRIDE to skip ray for faster computing
+        // Check one cell after the endpoint
+            const double after_x = end_x + ADJACENT_FRACTION * res * dx;
+            const double after_y = end_y + ADJACENT_FRACTION * res * dy;
+
+            int gx_after, gy_after;
+
+            if (worldToGrid(after_x, after_y, map, gx_after, gy_after)) {
+                const double after_log_odds =
+                    occupancyToLogOdds(getOccupancy(gx_after, gy_after, map));
+
+                if (after_log_odds > 0) {
+                    score += ADJACENT_FRACTION * after_log_odds;
+                }
+            }
+            // Check one cell before the endpoint
+            const double before_x = end_x - ADJACENT_FRACTION * res * dx;
+            const double before_y = end_y - ADJACENT_FRACTION * res * dy;
+
+            int gx_before, gy_before;
+
+            if (worldToGrid(before_x, before_y, map, gx_before, gy_before)) {
+                const double before_log_odds = occupancyToLogOdds(getOccupancy(gx_before, gy_before, map));
+
+                if (before_log_odds > 0) {
+                    score += ADJACENT_FRACTION * before_log_odds;
+                }
+            }
+        }
         (void)res;
     }
 

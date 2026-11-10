@@ -59,7 +59,26 @@ nav2_msgs::msg::ParticleCloud ParticleFilter::resampleParticles(const nav2_msgs:
     double random_offset = unif(random_gen);
 
     // TODO: resample the particles here
-    (void)random_offset; (void)cloud;
+    // (void)random_offset; (void)cloud;
+    // Systematic resampling
+    double cumulative_weight = cloud.particles[0].weight;
+    size_t index = 0;
+
+    for (size_t i = 0; i < static_cast<size_t>(num_particles_); ++i) {
+        const double target = random_offset +
+                            static_cast<double>(i) / num_particles_;
+
+        while (target > cumulative_weight &&
+            index < cloud.particles.size() - 1) {
+            ++index;
+            cumulative_weight += cloud.particles[index].weight;
+        }
+
+        nav2_msgs::msg::Particle particle = cloud.particles[index];
+        particle.weight = 1.0 / static_cast<double>(num_particles_);
+
+        resampled.particles.push_back(particle);
+    }
 
     return resampled;
 }
@@ -80,12 +99,21 @@ geometry_msgs::msg::Pose ParticleFilter::computeEstimatePose(const nav2_msgs::ms
         const double theta = yawFromQuaternion(p.pose.orientation);
 
         // TODO: calculate the weighted sum of the particles' pose
-        (void)x; (void)y; (void)cos_sum; (void)sin_sum; (void)w, (void)theta;
+        // (void)x; (void)y; (void)cos_sum; (void)sin_sum; (void)w, (void)theta;
+        x += w * p.pose.position.x;
+        y += w * p.pose.position.y;
+
+        cos_sum += w * std::cos(theta);
+        sin_sum += w * std::sin(theta);
     }
 
     geometry_msgs::msg::Pose est;
-    // est.position.x = ?
-    // est.position.y = ?
-    // est.orientation = quaternionFromYaw(?);
+    est.position.x = x;
+    est.position.y = y;
+    est.position.z = 0.0;
+
+    const double mean_theta = std::atan2(sin_sum, cos_sum);
+    est.orientation = quaternionFromYaw(mean_theta);
+
     return est;
 }
