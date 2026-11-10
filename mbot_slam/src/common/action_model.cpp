@@ -32,9 +32,22 @@ bool ActionModel::processOdometry(const nav_msgs::msg::Odometry& odom)
     const double delta_trans  = std::sqrt(dx*dx + dy*dy);
     const double delta_theta  = angleDiff(theta_curr, theta_prev);
 
-    rot1_ = angleDiff(std::atan2(dy, dx), theta_prev);
-    trans_ = delta_trans;
-    rot2_ = angleDiff(delta_theta, rot1_);
+    // rot1_ = angleDiff(std::atan2(dy, dx), theta_prev);
+    // trans_ = delta_trans;
+    // rot2_ = angleDiff(delta_theta, rot1_);
+
+    // Decompose motion into rotation-translation-rotation
+    if (delta_trans < 1e-6){
+        // Robot rotates without translating
+        rot1_ = 0.0;
+        trans_ = 0.0;
+        rot2_ = delta_theta;
+    } else {
+        // Normal translation and rotation
+        rot1_ = angleDiff(std::atan2(dy, dx), theta_prev);
+        trans_ = delta_trans;
+        rot2_ = angleDiff(delta_theta, rot1_);
+    }
 
     const bool moved = (delta_trans >= min_trans_) ||
         (std::abs(delta_theta) >= min_rot_);
@@ -44,9 +57,9 @@ bool ActionModel::processOdometry(const nav_msgs::msg::Odometry& odom)
         // TODO: Compute the standard deviation (sqrt of variance) for each motion component.
         // Noise scales with motion: std = sqrt(k1 * motion)
         // k1, k2 are defined in action_model.hpp.
-        // rot1_std_  = ?
-        // trans_std_ = ?
-        // rot2_std_  = ?
+        rot1_std_ = std::sqrt(k1_ * std::abs(rot1_) + k2_ * trans_);
+        trans_std_ = std::sqrt(k1_ * trans_ + k2_ * (std::abs(rot1_) + std::abs(rot2_)));
+        rot2_std_ = std::sqrt(k1_ * std::abs(rot2_) + k2_ * trans_);
     }
 
     prev_odom_ = odom;
@@ -70,10 +83,11 @@ geometry_msgs::msg::Pose ActionModel::propagateParticle(const geometry_msgs::msg
 
     // TODO: with sampled R-T-R values, what is the new pose of the particle
     geometry_msgs::msg::Pose new_pose = pose;
-    (void)sampled_rot1; (void)sampled_rot2; (void)sampled_trans; (void)theta;
-    // new_pose.position.x = ?
-    // new_pose.position.y = ?
-    // new_pose.orientation = quaternionFromYaw(?);
+    // (void)sampled_rot1; (void)sampled_rot2; (void)sampled_trans; (void)theta;
+    const double new_theta = theta + sampled_rot1 + sampled_rot2;
+    new_pose.position.x = pose.position.x + sampled_trans * std::cos(theta + sampled_rot1);
+    new_pose.position.y = pose.position.y + sampled_trans * std::sin(theta + sampled_rot1);
+    new_pose.orientation = quaternionFromYaw(new_theta);
 
     return new_pose;
 }
