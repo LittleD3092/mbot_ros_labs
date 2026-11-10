@@ -34,7 +34,7 @@ shell:
 
 rviz: build
 	xhost +local: >/dev/null
-	$(DOCKER_RUN_NAMED) bash -c 'source install/setup.bash && ros2 run rviz2 rviz2 -d src/mbot_slam/rviz/mapping.rviz'
+	$(DOCKER_RUN_NAMED) bash -c 'source install/setup.bash && ros2 run rviz2 rviz2 -d mbot_slam/rviz/mapping.rviz'
 
 clean:
 	rm -rf build install log
