@@ -32,9 +32,17 @@ shell:
 	  { echo "No '$(CONTAINER)' container running. Start one with 'make rviz' or 'make run'."; exit 1; }
 	docker exec -it $(CONTAINER) bash -c '$(SHELL_INIT)'
 
-rviz: build
+rviz-mapping: build
 	xhost +local: >/dev/null
 	$(DOCKER_RUN_NAMED) bash -c 'source install/setup.bash && ros2 run rviz2 rviz2 -d mbot_slam/rviz/mapping.rviz'
+
+rviz-localization: build
+	xhost +local: >/dev/null
+	$(DOCKER_RUN_NAMED) bash -c 'source install/setup.bash && ros2 run rviz2 rviz2 -d mbot_slam/rviz/localization.rviz'
+
+rviz-slam: build
+	xhost +local: >/dev/null
+	$(DOCKER_RUN_NAMED) bash -c 'source install/setup.bash && ros2 run rviz2 rviz2 -d mbot_slam/rviz/slam.rviz'
 
 clean:
 	rm -rf build install log
