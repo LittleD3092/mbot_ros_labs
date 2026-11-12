@@ -72,10 +72,14 @@ double SensorModel::likelihood(const MovingLaserScan& scan,
         // you can use ADJACENT_FRACTION in sensor_model.hpp
         // you can also tune RAY_STRIDE to skip ray for faster computing
         // Check one cell after the endpoint
-            const double after_x = end_x + ADJACENT_FRACTION * res * dx;
-            const double after_y = end_y + ADJACENT_FRACTION * res * dy;
+            const double after_x = end_x + res * dx;
+            const double after_y = end_y + res * dy;
 
             int gx_after, gy_after;
+
+            // Flag to indicate if the cell after is a hit.
+            // Used to prevent checking the cell before if the cell after is already a hit.
+            bool cell_after_is_a_hit = false;
 
             if (worldToGrid(after_x, after_y, map, gx_after, gy_after)) {
                 const double after_log_odds =
@@ -83,19 +87,23 @@ double SensorModel::likelihood(const MovingLaserScan& scan,
 
                 if (after_log_odds > 0) {
                     score += ADJACENT_FRACTION * after_log_odds;
+                    cell_after_is_a_hit = true;
                 }
             }
+
             // Check one cell before the endpoint
-            const double before_x = end_x - ADJACENT_FRACTION * res * dx;
-            const double before_y = end_y - ADJACENT_FRACTION * res * dy;
+            if (!cell_after_is_a_hit) {
+                const double before_x = end_x - res * dx;
+                const double before_y = end_y - res * dy;
 
-            int gx_before, gy_before;
+                int gx_before, gy_before;
 
-            if (worldToGrid(before_x, before_y, map, gx_before, gy_before)) {
-                const double before_log_odds = occupancyToLogOdds(getOccupancy(gx_before, gy_before, map));
+                if (worldToGrid(before_x, before_y, map, gx_before, gy_before)) {
+                    const double before_log_odds = occupancyToLogOdds(getOccupancy(gx_before, gy_before, map));
 
-                if (before_log_odds > 0) {
-                    score += ADJACENT_FRACTION * before_log_odds;
+                    if (before_log_odds > 0) {
+                        score += ADJACENT_FRACTION * before_log_odds;
+                    }
                 }
             }
         }
