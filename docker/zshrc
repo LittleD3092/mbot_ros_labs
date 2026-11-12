@@ -1,0 +1,21 @@
+# zsh config for the mbot-ros container, matching umich-caen-setup.
+# The container runs as your host user with HOME=/tmp, so everything
+# writable (history, caches) goes under $HOME, not next to this file.
+
+export ZSH=/opt/oh-my-zsh
+export ZSH_CACHE_DIR="$HOME/.cache/oh-my-zsh"
+export ZSH_COMPDUMP="$HOME/.zcompdump"
+mkdir -p "$ZSH_CACHE_DIR/completions"
+
+DISABLE_AUTO_UPDATE=true
+ZSH_THEME=""
+plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
+source "$ZSH/oh-my-zsh.sh"
+
+# ROS 2 Jazzy, plus this workspace once it has been built.
+source /opt/ros/jazzy/setup.zsh
+[ -f /ws/install/setup.zsh ] && source /ws/install/setup.zsh
+[ -f /usr/share/colcon_argcomplete/hook/colcon-argcomplete.zsh ] && \
+    source /usr/share/colcon_argcomplete/hook/colcon-argcomplete.zsh
+
+eval "$(starship init zsh)"

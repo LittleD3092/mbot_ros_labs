@@ -1,0 +1,36 @@
+add_newline = false
+
+[cmake]
+disabled = true
+
+[cmd_duration]
+format = "[$duration]($style) "
+
+[directory]
+read_only = " "
+read_only_style = "bold blue"
+style = "bold blue"
+
+[git_branch]
+format = "[ $symbol$branch]($style) "
+style = "bold green"
+
+[git_status]
+style = "blue"
+
+[hostname]
+format = "[$ssh_symbol$hostname]($style) "
+
+[line_break]
+disabled = true
+
+[nix_shell]
+format = "[$state(  \\($name\\))]($style) "
+style = "dimmed white"
+
+[python]
+format = "[$symbol($version )(\\($virtualenv\\) )]($style)"
+symbol = "py "
+
+[username]
+format = "[$user]($style) "
