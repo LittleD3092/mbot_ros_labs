@@ -60,9 +60,9 @@ bool ActionModel::processOdometry(const nav_msgs::msg::Odometry& odom)
         rot1_std_ = std::sqrt(k1_ * std::abs(rot1_) + k2_ * trans_);
         trans_std_ = std::sqrt(k1_ * trans_ + k2_ * (std::abs(rot1_) + std::abs(rot2_)));
         rot2_std_ = std::sqrt(k1_ * std::abs(rot2_) + k2_ * trans_);
-    }
 
-    prev_odom_ = odom;
+        prev_odom_ = odom;
+    }
 
     return moved;
 }
