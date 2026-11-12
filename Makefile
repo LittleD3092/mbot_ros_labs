@@ -1,5 +1,5 @@
 MBOT_IP ?= 67.194.34.59
-IMAGE   := osrf/ros:jazzy-desktop
+IMAGE   := mbot-ros-labs:jazzy
 CONTAINER ?= mbot-ros
 MBOT_HOST ?= mbot@$(MBOT_IP)
 ROS_ENV   := source /opt/ros/jazzy/setup.zsh && export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
@@ -14,15 +14,19 @@ DOCKER_RUN := docker run -it --rm --net=host \
 DOCKER_RUN_NAMED := $(DOCKER_RUN) --name $(CONTAINER) $(IMAGE)
 DOCKER_RUN       += $(IMAGE)
 
-# docker exec skips the image entrypoint, so source ROS by hand.
-SHELL_INIT := source /opt/ros/jazzy/setup.bash; [ -f install/setup.bash ] && source install/setup.bash; exec bash
+# zsh sources ROS and the workspace itself (docker/zshrc).
+SHELL_INIT := exec zsh
 
-.PHONY: rviz build run shell clean lidar-on lidar-off
+.PHONY: rviz image build run shell clean lidar-on lidar-off
 
-build:
+# Docker reuses cached layers, so this is quick when nothing changed.
+image:
+	docker build -t $(IMAGE) .
+
+build: image
 	$(DOCKER_RUN) bash -c 'colcon build --packages-select mbot_description'
 
-run:
+run: image
 	xhost +local: >/dev/null
 	$(DOCKER_RUN_NAMED) bash -c '$(SHELL_INIT)'
 
