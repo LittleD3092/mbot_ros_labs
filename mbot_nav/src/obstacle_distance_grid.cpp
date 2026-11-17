@@ -30,6 +30,15 @@ float ObstacleDistanceGrid::getDistance(int x, int y) const
     return distances_[y * width_ + x];
 }
 
+// Precondition:
+// - (x, y) is a coordinate in the grid space.
+//
+// Postcondition:
+// - Returns the occupancy value of the cell at (x, y).
+// - The return value is defined as follows:
+//     - -1 is invalid
+//     - 0 ~ 49 is free
+//     - 50 ~ 100 is occupied
 int8_t ObstacleDistanceGrid::getOccupancy(int x, int y) const
 {
     if (!isCellInGrid(x, y)) return -1;  // unknown if out of bounds
