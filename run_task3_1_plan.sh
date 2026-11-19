@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # MBot ROS 2 navigation stack, run in tmux windows.
-# Usage: ./run_mbot_stack.sh [maze1|maze2]
-#        ./run_mbot_stack.sh stop|estop
+# Usage: ./run_task3_1_plan.sh [maze1|maze2]
+#        ./run_task3_1_plan.sh stop|estop
 # Open Foxglove Studio separately and connect to ws://localhost:8765
 
 set -Eeuo pipefail
