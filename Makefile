@@ -24,7 +24,7 @@ image:
 	docker build -t $(IMAGE) .
 
 build: image
-	$(DOCKER_RUN) bash -c 'colcon build --packages-select mbot_description'
+	$(DOCKER_RUN) bash -c 'colcon build --packages-up-to mbot_nav'
 
 run: image
 	xhost +local: >/dev/null
