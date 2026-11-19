@@ -30,6 +30,15 @@ float ObstacleDistanceGrid::getDistance(int x, int y) const
     return distances_[y * width_ + x];
 }
 
+// Precondition:
+// - (x, y) is a coordinate in the grid space.
+//
+// Postcondition:
+// - Returns the occupancy value of the cell at (x, y).
+// - The return value is defined as follows:
+//     - -1 is invalid
+//     - 0 ~ 49 is free
+//     - 50 ~ 100 is occupied
 int8_t ObstacleDistanceGrid::getOccupancy(int x, int y) const
 {
     if (!isCellInGrid(x, y)) return -1;  // unknown if out of bounds
@@ -54,37 +63,5 @@ void ObstacleDistanceGrid::computeDistances()
     // TODO: here we calcualte the obstable distance map distances_ based on occupancy grid
     //       we will use this obstable distance map in path planning
     //       to quickly assign costs to cells along the path
-    // 8-connected neighbors.
-    const int dx[] = {1, -1, 0, 0, 1, 1, -1, -1};
-    const int dy[] = {0, 0, 1, -1, 1, -1, 1, -1};
-
-    while (!queue.empty()) {
-        GridCell current = queue.front();
-        queue.pop();
-
-        int x = current.x;
-        int y = current.y;
-
-        float current_dist = getDistance(x, y);
-
-        for (int i = 0; i < 8; ++i) {
-            int nx = x + dx[i];
-            int ny = y + dy[i];
-
-            if (!isCellInGrid(nx, ny))
-                continue;
-
-            float step = (dx[i] != 0 && dy[i] != 0)
-                         ? resolution_ * std::sqrt(2.0f)
-                         : resolution_;
-
-            float new_dist = current_dist + step;
-
-            if (new_dist < getDistance(nx, ny)) {
-                distances_[ny * width_ + nx] = new_dist;
-                queue.emplace(nx, ny);
-            }
-        }
-    }
 }
 
