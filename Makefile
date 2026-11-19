@@ -48,6 +48,10 @@ rviz-slam: build
 	xhost +local: >/dev/null
 	$(DOCKER_RUN_NAMED) bash -c 'source install/setup.bash && ros2 run rviz2 rviz2 -d mbot_slam/rviz/slam.rviz'
 
+rviz-path-planning: build
+	xhost +local: >/dev/null
+	$(DOCKER_RUN_NAMED) bash -c 'source install/setup.bash && ros2 run rviz2 rviz2 -d mbot_nav/rviz/path_planning.rviz'
+
 clean:
 	rm -rf build install log
 
