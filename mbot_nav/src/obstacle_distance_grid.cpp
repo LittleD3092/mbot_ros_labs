@@ -48,6 +48,8 @@ int8_t ObstacleDistanceGrid::getOccupancy(int x, int y) const
 void ObstacleDistanceGrid::computeDistances()
 {
     std::queue<GridCell> queue;
+    // Using BFS that starts from all occupied cells and expands outwards
+    std::vector<GridCell> nearest_obstacle(width_ * height_, GridCell(-1, -1));
 
     // Step 1: Initialize queue with all occupied cells (value >= 50)
     for (int y = 0; y < height_; ++y) {
@@ -55,6 +57,7 @@ void ObstacleDistanceGrid::computeDistances()
             int idx = y * width_ + x;
             if (occupancy_[idx] >= 50) {
                 distances_[idx] = 0.0f;
+                nearest_obstacle[idx] = GridCell(x, y);
                 queue.emplace(x, y);
             }
         }
@@ -63,5 +66,35 @@ void ObstacleDistanceGrid::computeDistances()
     // TODO: here we calcualte the obstable distance map distances_ based on occupancy grid
     //       we will use this obstable distance map in path planning
     //       to quickly assign costs to cells along the path
+    // Step 2: grow outward using BFS
+    const std::vector<std::pair<int, int>> directions = {
+        {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+        {1, 1}, {-1, -1}, {1, -1}, {-1, 1}
+    };
+    while (!queue.empty()) {
+        // Get current cell from the queue
+        GridCell current = queue.front();
+        queue.pop();
+        int curr_idx = current.y * width_ + current.x;
+        GridCell src = nearest_obstacle[curr_idx];
+
+        // Check 8 neighbors from current cell
+        for (const auto& dir : directions) {
+            int nx = current.x + dir.first;
+            int ny = current.y + dir.second;
+            int neighbor_idx = ny * width_ + nx;
+
+            // Skip if neighbor is out of bounds
+            if (!isCellInGrid(nx, ny)) continue;
+
+            // Check if the current path to the nearest obstacle is shorter than the previously recorded distance
+            float new_distance = std::hypot(static_cast<float>(nx - src.x), static_cast<float>(ny - src.y)) * resolution_;
+            if (new_distance < distances_[neighbor_idx]) {
+                distances_[neighbor_idx] = new_distance;
+                nearest_obstacle[neighbor_idx] = src;
+                queue.emplace(nx, ny);
+            }
+        }
+    }
 }
 
