@@ -28,10 +28,19 @@ public:
 private:
     nav_msgs::msg::Odometry prev_odom_;
 
-    double k1_{0.005};          // rotational noise coefficient
-    double k2_{0.003};          // translational noise coefficient
-    double min_trans_{0.005}; // [m] ignore motion below this
-    double min_rot_ {0.01};    // [rad] ignore rotation below this
+    double k1_{0.005};          // rotational noise coefficient (was 0.015)
+    double k2_{0.002};          // translational noise coefficient (was 0.008)
+    double min_trans_{0.005}; // [m] wait until at least this much motion has accumulated
+    double min_rot_ {0.01};    // [rad] wait until at least this much rotation has accumulated
+
+    // Below this translation [m] the step is treated as a pure rotation (rot1 = 0).
+    // Odometry reports a few mm of translation in a random direction while turning in place;
+    // without this, rot1 = atan2(dy,dx) can be anything up to +-pi and injects large heading noise.
+    static constexpr double kPureRotationTransThresh = 0.005;
+    // If the motion direction is more than this far from the heading [rad], the robot drove backwards.
+    static constexpr double kReverseAngleThresh = M_PI / 2.0;
+    // std::normal_distribution requires stddev > 0.
+    static constexpr double kMinStd = 1e-6;
 
     // (rot1, trans, rot2) motion decomposition
     double rot1_{0.0}, trans_{0.0}, rot2_{0.0};

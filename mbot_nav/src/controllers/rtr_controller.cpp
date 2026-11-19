@@ -128,12 +128,12 @@ geometry_msgs::msg::Twist RTRController::computeVelocityCommands(double x, doubl
     }
 
     // Safety limits (Select slow or high-speed limits)
-    cmd.linear.x  = std::clamp(cmd.linear.x,  -0.3, 0.3);
-    cmd.angular.z = std::clamp(cmd.angular.z, -0.3, 0.3);
+    // cmd.linear.x  = std::clamp(cmd.linear.x,  -0.3, 0.3);
+    // cmd.angular.z = std::clamp(cmd.angular.z, -0.3, 0.3);
 
     // Slow-speed test: 0.2 m/s and pi/4 rad/s
-    // cmd.linear.x = std::clamp(cmd.linear.x, -0.2, 0.2);
-    // cmd.angular.z = std::clamp(cmd.angular.z, -M_PI/4.0, M_PI/4.0);
+    cmd.linear.x = std::clamp(cmd.linear.x, -0.2, 0.2);
+    cmd.angular.z = std::clamp(cmd.angular.z, -M_PI/4.0, M_PI/4.0);
 
     // High-speed test: 0.8 m/s and pi rad/s
     // cmd.linear.x = std::clamp(cmd.linear.x, -0.8, 0.8);
