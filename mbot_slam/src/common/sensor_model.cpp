@@ -2,6 +2,7 @@
 #include "common/utils.hpp"
 
 #include <cmath>
+#include <algorithm>
 
 SensorModel::SensorModel()
     : ray_stride_{RAY_STRIDE}
@@ -46,6 +47,8 @@ double SensorModel::likelihood(const MovingLaserScan& scan,
 
     for (const auto& ray : scan) {
         if ((ray_count++ % ray_stride_) != 0) continue;
+        // NaN / inf / out-of-range beams were already dropped in MovingLaserScan.
+        if (ray.range > MAX_SCORING_RANGE) continue;
 
         // Lidar is mounted backward (180 degree offset)
         double angle = wrapToPi(ray.theta + M_PI);
@@ -72,35 +75,27 @@ double SensorModel::likelihood(const MovingLaserScan& scan,
         // you can use ADJACENT_FRACTION in sensor_model.hpp
         // you can also tune RAY_STRIDE to skip ray for faster computing
         // Check one cell after the endpoint
+            // Step a full cell (res), not ADJACENT_FRACTION * res, or we may land in the same cell
             const double after_x = end_x + res * dx;
             const double after_y = end_y + res * dy;
 
             int gx_after, gy_after;
-
-            // Flag to indicate if the cell after is a hit.
-            // Used to prevent checking the cell before if the cell after is already a hit.
-            bool cell_after_is_a_hit = false;
-
+            double after_log_odds = 0.0;
             if (worldToGrid(after_x, after_y, map, gx_after, gy_after)) {
-                const double after_log_odds =
-                    occupancyToLogOdds(getOccupancy(gx_after, gy_after, map));
-
-                if (after_log_odds > 0) {
-                    score += ADJACENT_FRACTION * after_log_odds;
-                    cell_after_is_a_hit = true;
-                }
+                after_log_odds = occupancyToLogOdds(getOccupancy(gx_after, gy_after, map));
             }
 
-            // Check one cell before the endpoint
-            if (!cell_after_is_a_hit) {
+            if (after_log_odds > 0) {
+                score += ADJACENT_FRACTION * after_log_odds;
+            } else {
+                // Cell after is not a hit either: check one cell before the endpoint
                 const double before_x = end_x - res * dx;
                 const double before_y = end_y - res * dy;
 
                 int gx_before, gy_before;
-
                 if (worldToGrid(before_x, before_y, map, gx_before, gy_before)) {
-                    const double before_log_odds = occupancyToLogOdds(getOccupancy(gx_before, gy_before, map));
-
+                    const double before_log_odds =
+                        occupancyToLogOdds(getOccupancy(gx_before, gy_before, map));
                     if (before_log_odds > 0) {
                         score += ADJACENT_FRACTION * before_log_odds;
                     }
@@ -120,12 +115,23 @@ nav2_msgs::msg::ParticleCloud SensorModel::weightParticles(const nav2_msgs::msg:
 {
     nav2_msgs::msg::ParticleCloud posterior = proposal;
     double sum_w = 0.0;
+    double best_score = 0.0;
 
     for (size_t i = 0; i < posterior.particles.size(); ++i) {
         MovingLaserScan deskewed_scan(scan, parent_cloud.particles[i].pose, proposal.particles[i].pose);
         posterior.particles[i].weight = likelihood(deskewed_scan, map);
-        sum_w += posterior.particles[i].weight;
+        best_score = std::max(best_score, posterior.particles[i].weight);
     }
+
+    // Sharpen: linear scores are too flat, so good and mediocre particles look alike.
+    // Scale relative to the best score so it works for any map / number of rays.
+    if (best_score > 0.0) {
+        const double temperature = WEIGHT_TEMPERATURE * best_score;
+        for (auto& p : posterior.particles) {
+            p.weight = std::exp((p.weight - best_score) / temperature);
+        }
+    }
+    for (const auto& p : posterior.particles) sum_w += p.weight;
 
     // Avoid division by zero
     if (sum_w <= 0.0) {

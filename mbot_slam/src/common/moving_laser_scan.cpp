@@ -52,7 +52,12 @@ void MovingLaserScan::deskewScan(const sensor_msgs::msg::LaserScan& scan,
         }
 
         // TODO: Calculate how much this ray has rotated - delta_lidar
-        const float t = (num_rays > 1) ? static_cast<float>(i) / static_cast<float>(num_rays - 1) : 0.0f;
+        // Fraction of the scan time at which this ray was measured (0 = start pose, 1 = end pose).
+        // The sllidar_ros2 driver (inverted:=false, angle_compensate:=true) REVERSES the ray array
+        // to make angles counter-clockwise, so ranges[0] was measured LAST and ranges[n-1] FIRST.
+        // Using i/(n-1) directly would deskew in the wrong direction and bias heading during turns.
+        const float idx_frac = (num_rays > 1) ? static_cast<float>(i) / static_cast<float>(num_rays - 1) : 0.0f;
+        const float t = kRaysReversedInTime ? 1.0f - idx_frac : idx_frac;
         // Laser angle for this individual ray
         const float delta_lidar = scan.angle_min + static_cast<float>(i) * scan.angle_increment;
         // Hint: To calculate delta_lidar, check LiDAR Scan’s ROS message type “sensor_msgs/LaserScan” 

@@ -10,8 +10,15 @@
 class SensorModel
 {
 public:
-    static constexpr int RAY_STRIDE = 3;
+    static constexpr int RAY_STRIDE = 6;
     static constexpr double ADJACENT_FRACTION = 0.5;
+    // Beams longer than this [m] are not scored (same reasoning as OccupancyGrid::kMaxMappingRange:
+    // they mostly leak through gaps, have the largest angular error, and end in unmapped space).
+    static constexpr double MAX_SCORING_RANGE = 5.0;
+    // Weight sharpening: weight = exp((score - best_score) / (WEIGHT_TEMPERATURE * best_score)).
+    // A particle scoring 10% below the best gets ~e^-1 of its weight at 0.1.
+    // Smaller = pickier (tighter cloud, but risk of collapsing); larger = closer to the old linear weights.
+    static constexpr double WEIGHT_TEMPERATURE = 0.1;
 
     explicit SensorModel();
 

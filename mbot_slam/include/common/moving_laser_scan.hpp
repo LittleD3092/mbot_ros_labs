@@ -18,6 +18,10 @@ class MovingLaserScan
 public:
     using Pose = geometry_msgs::msg::Pose;
 
+    // sllidar_ros2 (inverted:=false, angle_compensate:=true) REVERSES the ray array to make
+    // angles counter-clockwise, so ranges[0] was measured LAST. Set false if inverted:=true.
+    static constexpr bool kRaysReversedInTime = true;
+
     MovingLaserScan(const sensor_msgs::msg::LaserScan& scan,
                     const Pose& start_pose,
                     const Pose& end_pose);
