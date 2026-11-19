@@ -12,6 +12,12 @@ ZSH_THEME=""
 plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
 source "$ZSH/oh-my-zsh.sh"
 
+# The container is removed on exit, so keep history in the mounted repo
+# (gitignored) instead of $HOME. Survives restarts and image rebuilds.
+HISTFILE=/ws/.zsh_history
+HISTSIZE=50000
+SAVEHIST=50000
+
 # ROS 2 Jazzy, the mbot_interfaces underlay, plus this workspace once built.
 source /opt/ros/jazzy/setup.zsh
 source /opt/mbot_deps/install/setup.zsh
