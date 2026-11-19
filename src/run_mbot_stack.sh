@@ -1,79 +1,130 @@
 #!/usr/bin/env bash
-# Start the MBot navigation stack in separate terminal windows using Foxglove.
-# Usage:
-#   ./run_mbot_stack.sh             # uses final_map
-#   ./run_mbot_stack.sh maze1       # uses maze1
-#
-# Requires a graphical Ubuntu session with gnome-terminal.
-# Foxglove Studio must be open separately in a browser/desktop app.
+# MBot ROS 2 navigation stack, run in tmux windows.
+# Usage: ./run_mbot_stack.sh [final_map|maze1|maze2]
+#        ./run_mbot_stack.sh stop|estop
+# Open Foxglove Studio separately and connect to ws://localhost:8765
 
 set -Eeuo pipefail
 
-WORKSPACE="${HOME}/mbot_ros_labs"
-MAP_NAME="${1:-final_map}"
+WS="${HOME}/mbot_ros_labs"
+MAP="${1:-final_map}"
+SESSION="mbot"
 
-if [[ ! -d "${WORKSPACE}/src/mbot_nav" ]]; then
-  echo "ERROR: Cannot find ${WORKSPACE}/src/mbot_nav"
-  echo "Edit WORKSPACE near the top of this script if your workspace is elsewhere."
-  exit 1
+die()  { echo -e "\n[ERROR] $*" >&2; exit 1; }
+info() { echo "[MBOT] $*"; }
+
+# ROS setup scripts reference unset variables, so source them with -u disabled.
+source_safe() { set +u; source "$1"; set -u; }
+
+# --- Emergency stop (runs before any startup checks) ---
+if [[ "$MAP" == "stop" || "$MAP" == "estop" ]]; then
+    command -v tmux >/dev/null || die "tmux is unavailable."
+    tmux has-session -t "$SESSION" 2>/dev/null || { info "No active MBot session."; exit 0; }
+
+    if tmux list-windows -t "$SESSION" -F '#{window_name}' | grep -qx Controller; then
+        info "Stopping controller..."
+        tmux send-keys -t "$SESSION:Controller" C-c
+        sleep 1
+    fi
+    tmux kill-session -t "$SESSION"
+
+    cat <<EOF
+
+[MBOT] Software stop completed. CHECK THAT THE ROBOT HAS PHYSICALLY STOPPED.
+[MBOT] If it keeps moving, use the physical emergency-stop switch immediately.
+EOF
+    exit 0
 fi
 
-if ! command -v gnome-terminal >/dev/null 2>&1; then
-  echo "ERROR: gnome-terminal was not found."
-  echo "This script opens one terminal window per ROS process and requires gnome-terminal."
-  exit 1
+# --- Checks ---
+[[ "$MAP" =~ ^[a-zA-Z0-9_-]+$ ]]           || die "Invalid map name: $MAP"
+[[ -d "$WS/src/mbot_nav" ]]                || die "Missing $WS/src/mbot_nav"
+[[ -d "$WS/src/mbot_slam" ]]               || die "Missing $WS/src/mbot_slam"
+[[ -f "$WS/src/mbot_nav/maps/$MAP.yaml" ]] || die "Map not found: $MAP"
+command -v tmux >/dev/null                 || die "tmux not installed. Run: sudo apt install tmux"
+command -v colcon >/dev/null               || die "colcon is not installed."
+[[ -t 0 ]]                                 || die "Run from an interactive terminal."
+tmux has-session -t "$SESSION" 2>/dev/null &&
+    die "An MBot session is already running. Stop it with: $0 stop (or: tmux attach -t $SESSION)"
+
+# --- Source ROS 2 ---
+if [[ -z "${ROS_DISTRO:-}" ]]; then
+    installs=(/opt/ros/*)
+    [[ ${#installs[@]} -eq 1 && -f "${installs[0]}/setup.bash" ]] || die "Cannot determine ROS_DISTRO."
+    source_safe "${installs[0]}/setup.bash"
 fi
+ROS_SETUP="/opt/ros/$ROS_DISTRO/setup.bash"
+[[ -f "$ROS_SETUP" ]] || die "ROS setup not found: $ROS_SETUP"
+source_safe "$ROS_SETUP"
+command -v ros2 >/dev/null || die "ROS 2 not found."
+info "ROS: $ROS_DISTRO, map: $MAP"
 
-cd "${WORKSPACE}"
+# --- Build ---
+cd "$WS"
+info "Building..."
+set +u
+colcon build --symlink-install --packages-up-to mbot_nav mbot_slam
+set -u
+SETUP="$WS/install/setup.bash"
+[[ -f "$SETUP" ]] || die "Workspace setup file was not created."
+source_safe "$SETUP"
 
-echo "Building mbot_nav and mbot_slam..."
-colcon build --packages-select mbot_nav mbot_slam
+# --- Verify packages and executables ---
+for pkg in mbot_nav mbot_slam mbot_bringup foxglove_bridge; do
+    ros2 pkg prefix "$pkg" >/dev/null 2>&1 || die "ROS package '$pkg' is unavailable."
+done
+ros2 pkg executables mbot_slam | grep -q localization_node || die "localization_node not found."
+ros2 pkg executables mbot_nav  | grep -q controller_node   || die "controller_node not found."
 
-SETUP="${WORKSPACE}/install/setup.bash"
-if [[ ! -f "${SETUP}" ]]; then
-  echo "ERROR: ${SETUP} was not created."
-  exit 1
-fi
-
-open_ros_terminal() {
-  local title="$1"
-  local command="$2"
-  gnome-terminal --title="${title}" -- bash -lc \
-    "cd '${WORKSPACE}' && source '${SETUP}' && ${command}; status=\$?; echo; echo '${title} exited with status' \$status; exec bash"
+# --- tmux helper: start_window <name> <command> [delay] ---
+# The first call creates the session; later calls add windows.
+start_window() {
+    local name="$1" cmd="$2"
+    if tmux has-session -t "$SESSION" 2>/dev/null; then
+        tmux new-window -t "$SESSION" -n "$name"
+    else
+        tmux new-session -d -s "$SESSION" -n "$name"
+    fi
+    tmux send-keys -t "$SESSION:$name" \
+        "cd '$WS'; source '$ROS_SETUP'; source '$SETUP'; $cmd; rc=\$?; echo; echo '$name exited with status' \$rc; exec bash" C-m
+    sleep "${3:-0}"
 }
 
-echo "Starting robot bringup..."
-open_ros_terminal "MBot 1 - Bringup" \
-  "ros2 launch mbot_bringup mbot_bringup.launch.py"
+info "Starting bringup, navigation, localization, Foxglove..."
+start_window Bringup      "ros2 launch mbot_bringup mbot_bringup.launch.py" 5
+start_window Navigation   "ros2 launch mbot_nav path_planning.launch.py map_name:=$MAP pose_source:=tf" 5
+start_window Localization "ros2 run mbot_slam localization_node --ros-args -p publish_tf:=true" 3
+start_window Foxglove     "ros2 launch foxglove_bridge foxglove_bridge_launch.xml" 2
 
-sleep 3
-echo "Starting map and navigation..."
-open_ros_terminal "MBot 2 - Navigation" \
-  "ros2 launch mbot_nav path_planning.launch.py map_name:='${MAP_NAME}' pose_source:=tf"
+clear
+cat <<EOF
+==================================================
+ MBOT NAVIGATION STACK STARTED
+==================================================
+Map: $MAP | ROS: $ROS_DISTRO | tmux session: $SESSION
+Running: Bringup, Navigation, Localization, Foxglove bridge
 
-sleep 3
-echo "Starting localization..."
-open_ros_terminal "MBot 3 - Localization" \
-  "ros2 run mbot_slam localization_node --ros-args -p publish_tf:=true"
+Open Foxglove Studio and connect to: ws://localhost:8765
 
-sleep 3
-echo "Starting Foxglove bridge..."
-open_ros_terminal "MBot 4 - Foxglove Bridge" \
-  "ros2 launch foxglove_bridge foxglove_bridge_launch.xml"
+Before starting the controller, verify:
+  [ ] Map on /map          [ ] LiDAR on /scan
+  [ ] TF tree publishing   [ ] Localization initialized
+  [ ] map -> base_footprint available
+  [ ] Initial pose published to /initialpose if needed
 
-echo
-echo "The four ROS terminals have been opened."
-echo "Now open Foxglove Studio and connect to ws://localhost:8765."
-echo "Add panels for the map (/map), TF, LaserScan (/scan), and relevant navigation topics."
-echo "Use Foxglove's Publish panel (or another ROS 2 publisher) to publish the initial pose"
-echo "to /initialpose if your localization node requires it."
-echo "Only continue once localization is initialized and the map->base_footprint TF exists."
-read -r -p "Press ENTER to start the motion controller (or Ctrl+C to stop here)... "
+Emergency stop (from another terminal):
+  ./src/run_mbot_stack.sh stop   (or: estop)
+==================================================
+EOF
 
-echo "Starting motion controller..."
-open_ros_terminal "MBot 5 - Controller" \
-  "ros2 run mbot_nav controller_node --ros-args -p use_localization:=true"
+read -r -p "Press ENTER only when localization is ready and initial pose is set. Ctrl+C to skip: "
 
-echo
-echo "All five ROS processes have been launched in separate terminal windows."
-echo "Keep all windows open. To stop the robot, stop the controller first (Ctrl+C in its window)."
+info "Starting motion controller..."
+start_window Controller "ros2 run mbot_nav controller_node --ros-args -p use_localization:=true"
+
+cat <<EOF
+
+Stack fully started.
+Attach to all processes: tmux attach -t $SESSION
+Emergency stop:          ./run_mbot_stack.sh stop
+EOF
