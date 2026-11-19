@@ -4,6 +4,7 @@
 
 #include <random>
 #include <cmath>
+#include <algorithm>
 #include <rclcpp/rclcpp.hpp>
 
 
@@ -37,34 +38,45 @@ bool ActionModel::processOdometry(const nav_msgs::msg::Odometry& odom)
     // rot2_ = angleDiff(delta_theta, rot1_);
 
     // Decompose motion into rotation-translation-rotation
-    if (delta_trans < 1e-6){
-        // Robot rotates without translating
-        rot1_ = 0.0;
-        trans_ = 0.0;
-        rot2_ = delta_theta;
-    } else {
-        // Normal translation and rotation
-        rot1_ = angleDiff(std::atan2(dy, dx), theta_prev);
+    if (delta_trans < kPureRotationTransThresh) {
+        // (Nearly) turning in place: the tiny translation has no meaningful direction,
+        // so apply it along the current heading instead of letting rot1 take a random value.
+        rot1_  = 0.0;
         trans_ = delta_trans;
+        rot2_  = delta_theta;
+    } else {
+        rot1_  = angleDiff(std::atan2(dy, dx), theta_prev);
+        trans_ = delta_trans;
+        if (std::abs(rot1_) > kReverseAngleThresh) {
+            // Driving backwards: model it as a negative translation, not a ~180 deg turn.
+            rot1_  = angleDiff(rot1_, M_PI);
+            trans_ = -delta_trans;
+        }
         rot2_ = angleDiff(delta_theta, rot1_);
     }
 
     const bool moved = (delta_trans >= min_trans_) ||
         (std::abs(delta_theta) >= min_rot_);
 
-    if (moved) {
-        (void)rot1_; (void)rot2_; (void)trans_;
-        // TODO: Compute the standard deviation (sqrt of variance) for each motion component.
-        // Noise scales with motion: std = sqrt(k1 * motion)
-        // k1, k2 are defined in action_model.hpp.
-        rot1_std_ = std::sqrt(k1_ * std::abs(rot1_) + k2_ * trans_);
-        trans_std_ = std::sqrt(k1_ * trans_ + k2_ * (std::abs(rot1_) + std::abs(rot2_)));
-        rot2_std_ = std::sqrt(k1_ * std::abs(rot2_) + k2_ * trans_);
-
-        prev_odom_ = odom;
+    if (!moved) {
+        // Keep prev_odom_ so small motions ACCUMULATE until they pass the threshold.
+        // (Previously prev_odom_ was overwritten here, silently discarding slow motion,
+        //  e.g. the last degrees of every turn as the controller slows down.)
+        return false;
     }
 
-    return moved;
+    // Noise scales with motion: std = sqrt(k * |motion|). k1_, k2_ are in action_model.hpp.
+    const double abs_trans = std::abs(trans_);
+    rot1_std_  = std::sqrt(k1_ * std::abs(rot1_) + k2_ * abs_trans);
+    trans_std_ = std::sqrt(k1_ * abs_trans + k2_ * (std::abs(rot1_) + std::abs(rot2_)));
+    rot2_std_  = std::sqrt(k1_ * std::abs(rot2_) + k2_ * abs_trans);
+
+    rot1_std_  = std::max(rot1_std_,  kMinStd);
+    trans_std_ = std::max(trans_std_, kMinStd);
+    rot2_std_  = std::max(rot2_std_,  kMinStd);
+
+    prev_odom_ = odom;
+    return true;
 }
 
 geometry_msgs::msg::Pose ActionModel::propagateParticle(const geometry_msgs::msg::Pose& pose)

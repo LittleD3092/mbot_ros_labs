@@ -26,7 +26,7 @@ private:
     std::vector<geometry_msgs::msg::Pose2D> goal_queue_;
 
     static constexpr double dist_thresh_     = 0.03; //original 0.05
-    static constexpr double angle_thresh_    = 0.03; //original 0.05
+    static constexpr double angle_thresh_    = 0.06; //original 0.05
     static constexpr double dt_              = 0.05;   // 50 ms control period
     static constexpr double integral_limit_  = 1.0;
 

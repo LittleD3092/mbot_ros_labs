@@ -8,6 +8,11 @@
 
 class OccupancyGrid {
 public:
+    // Beams longer than this [m] only clear free space up to the cap and do NOT mark an
+    // occupied endpoint. Long beams are mostly ones leaking through gaps between wall panels
+    // (and have the largest angular error), which leaves stray specks outside the walls.
+    static constexpr float kMaxMappingRange = 5.0f;
+
     OccupancyGrid(float width_m, float height_m, float resolution, float origin_x, float origin_y);
 
     void markCellOccupied(int x, int y);
@@ -32,10 +37,10 @@ private:
     int width_, height_;
     std::vector<float> log_odds_;  // flat row-major grid; NaN = unknown
 
-    const float kHitLogOdds = 0.85f;  
-    const float kMissLogOdds = -0.4f;
-    const float kMinLogOdds = -4.0f;
-    const float kMaxLogOdds = 6.0f;
+    const float kHitLogOdds = 0.55f;   // < 0.62 (= occupied_thresh 0.65) so one stray hit is NOT a wall; 2 hits are
+    const float kMissLogOdds = -0.2f;  // keeps ~3:1 hit:miss ratio
+    const float kMinLogOdds = -2.0f;
+    const float kMaxLogOdds = 4.0f;    // was 3.5 (confirmed walls harder to flip)
 };
 
 // Bresenham-style ray tracing from sensor origin to hit

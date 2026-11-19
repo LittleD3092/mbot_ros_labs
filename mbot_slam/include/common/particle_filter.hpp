@@ -18,6 +18,9 @@ class ParticleFilter
 public:
     // Configuration constants
     static constexpr int NUM_PARTICLES = 600;
+    // Pose estimate = weighted mean of only the best ESTIMATE_TOP_FRACTION of particles,
+    // so low-weight particles don't drag the estimate around (and smear the map).
+    static constexpr double ESTIMATE_TOP_FRACTION = 0.1;
 
     ParticleFilter();
 

@@ -94,8 +94,22 @@ geometry_msgs::msg::Pose ParticleFilter::computeEstimatePose(const nav2_msgs::ms
 {
     double x=0.0, y=0.0, cos_sum=0.0, sin_sum=0.0;
 
-    for (const auto& p : cloud.particles) {
-        const double w = p.weight;
+    // Use only the best ESTIMATE_TOP_FRACTION of particles (see particle_filter.hpp).
+    std::vector<const nav2_msgs::msg::Particle*> best;
+    best.reserve(cloud.particles.size());
+    for (const auto& p : cloud.particles) best.push_back(&p);
+    const size_t k = std::max<size_t>(1, static_cast<size_t>(best.size() * ESTIMATE_TOP_FRACTION));
+    std::partial_sort(best.begin(), best.begin() + k, best.end(),
+                      [](const auto* a, const auto* b) { return a->weight > b->weight; });
+    best.resize(k);
+
+    double w_sum = 0.0;
+    for (const auto* p : best) w_sum += p->weight;
+    if (w_sum <= 0.0) w_sum = 1.0;
+
+    for (const auto* pp : best) {
+        const auto& p = *pp;
+        const double w = p.weight / w_sum;
         const double theta = yawFromQuaternion(p.pose.orientation);
 
         // TODO: calculate the weighted sum of the particles' pose

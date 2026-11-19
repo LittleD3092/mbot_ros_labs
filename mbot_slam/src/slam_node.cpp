@@ -82,6 +82,10 @@ private:
 
     bool has_initialized_{false};
 
+    // Don't update the map from a scan if the robot turned more than this between scans [rad].
+    // 0.05 rad per scan ~= 0.4 rad/s at the A1's ~7.5 Hz. Raise it if corners stay unmapped.
+    static constexpr double kMaxTurnPerScanForMapping = 0.08;  // was 0.05 before the deskew fix
+
     // Scan callback
 
     void scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr scan)
@@ -149,11 +153,18 @@ private:
             const auto est_pose =
                 particle_filter_->update(odom_msg, *scan, map_msg_);
 
-            MovingLaserScan deskewed_scan(*scan, prev_est_pose_, est_pose);
-            updateGrid(deskewed_scan);
-
+            // Interpolate the scan between the last estimate pose and current est pose.
+            // Skip adding scans to the map while turning fast: heading error is largest then
+            // and those scans smear walls. Localization above still runs on every scan.
+            const double turn = std::abs(angleDiff(yawFromQuaternion(est_pose.orientation),
+                                                   yawFromQuaternion(prev_est_pose_.orientation)));
+            if (turn < kMaxTurnPerScanForMapping) {
+                MovingLaserScan deskewed_scan(*scan, prev_est_pose_, est_pose);
+                updateGrid(deskewed_scan);
+            }
             prev_est_pose_ = est_pose;
 
+            // Broadcast map -> odom transform
             broadcastTf(est_pose, odom_msg.pose.pose, scan_end_time);
 
             publishEstPose(est_pose, scan_end_time);
@@ -167,19 +178,24 @@ private:
     {
         for (const auto& ray : scan)
         {
+            // Long beams: clear free space only up to the cap, never mark an endpoint.
+            // (NaN / inf / < range_min / > range_max beams were already dropped in MovingLaserScan.)
+            const bool beyond_cap = ray.range > OccupancyGrid::kMaxMappingRange;
+            const float range = beyond_cap ? OccupancyGrid::kMaxMappingRange : ray.range;
+
             auto ray_cells = bresenhamRayTrace(
-                ray.origin.x, ray.origin.y, ray.theta + M_PI, ray.range, grid_); // + pi for backward mounted lidar
-            
-                if (!ray_cells.empty()) {
+                ray.origin.x, ray.origin.y, ray.theta + M_PI, range, grid_); // + pi for backward mounted lidar
+
+            if (!ray_cells.empty()) {
                 for (size_t j = 0; j + 1 < ray_cells.size(); ++j) {
-                    // TODO: we fill up the occupancy grid here
-                    // Hint: use markCellFree() or markCellOccupied()
                     grid_.markCellFree(ray_cells[j].first, ray_cells[j].second);
                 }
+                if (beyond_cap) continue;
+
                 // Calculate endpoint in world coordinates.
-                const float end_x = ray.origin.x + ray.range * std::cos(ray.theta + M_PI);
-                const float end_y = ray.origin.y + ray.range * std::sin(ray.theta + M_PI);
-                
+                const float end_x = ray.origin.x + range * std::cos(ray.theta + M_PI);
+                const float end_y = ray.origin.y + range * std::sin(ray.theta + M_PI);
+
                 // Convert endpoint to grid coordinates.
                 auto [end_grid_x, end_grid_y] = grid_.worldToGrid(end_x, end_y);
                 // Mark endpoint occupied only if inside the map.
