@@ -98,6 +98,12 @@ bool AStarPlanner::planPath(const ObstacleDistanceGrid& dist_grid,
                 pose.y = y * res + origin_y;
                 // TODO: how do we determine the heading?
                 // pose.theta = ?
+                if (i + 1 < waypoints_idx.size()) {
+                    const auto& next = waypoints_idx[i + 1];
+                    pose.theta = std::atan2(next.second - y, next.first - x);
+                } else {
+                    pose.theta = goal.theta;
+                }
                 raw_path.poses.push_back(pose);
             }
             path = smoothPath(dist_grid, raw_path);
@@ -110,10 +116,47 @@ bool AStarPlanner::planPath(const ObstacleDistanceGrid& dist_grid,
 
             // TODO: check neighbors, calcualte costs, then update cost_so_far, came_from, and open
             // hints: utilize dist_grid.getDistance() and dist_grid.getOccupancy()
-            (void)nx; (void)ny;
+            if (!dist_grid.isCellInGrid(nx, ny)) {
+                continue;
+            }
+            int8_t occupancy = dist_grid.getOccupancy(nx, ny);
+            if (occupancy < 0 || occupancy >= 50) {
+                continue;
+            }
+            float obstacle_dist = dist_grid.getDistance(nx, ny);
+            if (obstacle_dist < 0.15f) {
+                continue;
+            }
+            if (offset.x != 0 && offset.y != 0) {
+                int8_t occ1 = dist_grid.getOccupancy(current.x + offset.x, current.y);
+                int8_t occ2 = dist_grid.getOccupancy(current.x, current.y + offset.y);
+                if (occ1 < 0 || occ1 >= 50 ||
+                    occ2 < 0 || occ2 >= 50 ||
+                    dist_grid.getDistance(current.x + offset.x, current.y) < 0.15f ||
+                    dist_grid.getDistance(current.x, current.y + offset.y) < 0.15f) {
+                    continue;
+                }
+            }
+            float movement_cost =
+                (offset.x != 0 && offset.y != 0)
+                ? std::sqrt(2.0f)
+                : 1.0f;
+            float obstacle_cost = 0.0f;
+            const float safety_distance = 0.5f;
+            if (obstacle_dist < safety_distance) {
+                obstacle_cost = 2.0f * (safety_distance - obstacle_dist) / res;
+            }
+            float new_cost = cost_so_far[curr_idx] + movement_cost + obstacle_cost;
+            int next_idx = toIndex(nx, ny, width);
+            auto it = cost_so_far.find(next_idx);
+            if (it == cost_so_far.end() || new_cost < it->second) {
+                cost_so_far[next_idx] = new_cost;
+                float priority = new_cost + heuristic(nx, ny, goal_x, goal_y);
+                open.push({nx, ny, new_cost, priority});
+                came_from[next_idx] = curr_idx;
+            }
         }
     }
-
     return false;
 }
 
@@ -127,6 +170,32 @@ mbot_interfaces::msg::Pose2DArray AStarPlanner::smoothPath(
     // How do we know which waypoints can be pruned?
     // If waypoint 1 to waypoint 10 has not obstacle between them, then waypoints 2-9 can all be pruned
     // Hint: use isLineFree()
-    (void)dist_grid;
+    // [CHANGED] If there are at most two waypoints, return the original path.
+    if (raw_path.poses.size() <= 2) {
+        return raw_path;
+    }
+    size_t current = 0;
+    // Keep the starting waypoint.
+    pruned.poses.push_back(raw_path.poses.front());
+    while (current < raw_path.poses.size() - 1) {
+        size_t next = raw_path.poses.size() - 1;
+        // through a collision-free straight line.
+        while (next > current + 1) {
+            const auto& p1 = raw_path.poses[current];
+            const auto& p2 = raw_path.poses[next];
+            if (isLineFree(dist_grid, p1.x, p1.y, p2.x, p2.y)) {
+                break;
+            }
+            --next;
+        }
+
+        geometry_msgs::msg::Pose2D pose = raw_path.poses[next];
+        const auto& previous = raw_path.poses[current];
+        pose.theta = std::atan2(pose.y - previous.y, pose.x - previous.x);
+        pruned.poses.push_back(pose);
+        current = next;
+    }
+
+    pruned.poses.back().theta = raw_path.poses.back().theta;
     return pruned;
 }
