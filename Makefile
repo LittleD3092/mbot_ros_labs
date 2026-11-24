@@ -60,3 +60,6 @@ lidar-off:
 
 lidar-on:
 	ssh $(MBOT_HOST) '$(ROS_ENV) && ros2 service call /lidar_power std_srvs/srv/SetBool "{data: true}"'
+
+# Laptop simulation targets: make sim-explore, make sim (see sim/README.md)
+-include sim/sim.mk
