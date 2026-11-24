@@ -24,7 +24,7 @@ image:
 	docker build -t $(IMAGE) .
 
 build: image
-	$(DOCKER_RUN) bash -c 'colcon build --packages-select mbot_description'
+	$(DOCKER_RUN) bash -c 'colcon build --packages-up-to mbot_nav'
 
 run: image
 	xhost +local: >/dev/null
@@ -48,6 +48,10 @@ rviz-slam: build
 	xhost +local: >/dev/null
 	$(DOCKER_RUN_NAMED) bash -c 'source install/setup.bash && ros2 run rviz2 rviz2 -d mbot_slam/rviz/slam.rviz'
 
+rviz-path-planning: build
+	xhost +local: >/dev/null
+	$(DOCKER_RUN_NAMED) bash -c 'source install/setup.bash && ros2 run rviz2 rviz2 -d mbot_nav/rviz/path_planning.rviz'
+
 clean:
 	rm -rf build install log
 
@@ -56,3 +60,6 @@ lidar-off:
 
 lidar-on:
 	ssh $(MBOT_HOST) '$(ROS_ENV) && ros2 service call /lidar_power std_srvs/srv/SetBool "{data: true}"'
+
+# Laptop simulation targets: make sim-explore, make sim (see sim/README.md)
+-include sim/sim.mk
